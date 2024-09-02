@@ -293,19 +293,23 @@ impl TempTarball {
                             tarball_index.should_copy = true;
                             if !extract_mode.is_copy() {
                                 extract_mode = ExtractMode::Auto;
-                                for (entry, (sri, mode)) in &tarball_index.files {
+                                for (entry, fMap) in &tarball_index.files {
                                     let path = dir.join(entry);
                                     std::fs::remove_file(&path).io_context(|| format!("Failed to remove target file while extracting a new version, at {}.", path.display()))?;
-                                    let sri = sri.parse()?;
-                                    extract_from_cache(cache, &sri, &path, extract_mode, *mode)?;
+                                    let sri = fMap.sri.parse()?;
+                                    extract_from_cache(cache, &sri, &path, extract_mode, fMap.mode)?;
                                 }
                             }
                         }
                         build_mani = Some(manifest);
                     }
+
                     tarball_index
                         .files
-                        .insert(entry_subpath, (sri.to_string(), mode));
+                        .insert(entry_subpath, FileMap {
+                            sri: sri.to_string(),
+                            mode,
+                        });
                 } else {
                     let mut open_opts = std::fs::OpenOptions::new();
                     open_opts.write(true).create_new(true);
@@ -409,13 +413,21 @@ impl std::io::Seek for TempTarball {
     }
 }
 
+// TODO: another struct instead of tuple because of issues with rkyv::Archive + tuple traits
+#[derive(rkyv::Archive, rkyv::Serialize, Default)]
+#[archive(check_bytes)]
+pub(crate) struct FileMap {
+    pub(crate) sri: String,
+    pub(crate) mode: u32,
+}
+
 #[cfg(not(target_arch = "wasm32"))]
 #[derive(rkyv::Archive, rkyv::Serialize, Default)]
 #[archive(check_bytes)]
 pub(crate) struct TarballIndex {
     pub(crate) should_copy: bool,
     pub(crate) bin_paths: Vec<String>,
-    pub(crate) files: HashMap<String, (String, u32)>,
+    pub(crate) files: HashMap<String, FileMap>,
 }
 
 #[cfg(not(target_arch = "wasm32"))]
